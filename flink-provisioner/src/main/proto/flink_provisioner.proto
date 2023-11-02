@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+package org.restate_demos.flink_provisioner;
+
+import "dev/restate/ext.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/wrappers.proto";
+
+option java_package = "org.restate_demos.flink_provisioner.generated";
+option java_outer_classname = "FlinkProvisioner";
+
+service Savepoint {
+  option (dev.restate.ext.service_type) = KEYED;
+
+  rpc StartSavepoint(StartSavepointRequest) returns (google.protobuf.BoolValue) {}
+
+  rpc CompleteAndAcquireSavepoint(CompleteAndAcquireSavepointRequest) returns (google.protobuf.Empty) {}
+
+  rpc AcquireSavepoint(AcquireSavepointRequest) returns (google.protobuf.BoolValue) {}
+
+  // 1. Remove reference
+  // 2. If the last reference, delete savepoint
+  rpc ReleaseSavepoint(ReleaseSavepointRequest) returns (google.protobuf.BoolValue) {}
+
+  rpc GetSavepoint(GetSavepointRequest) returns (GetSavepointResponse) {}
+}
+
+message StartSavepointRequest {
+  string path = 1 [(dev.restate.ext.field) = KEY];
+}
+message CompleteAndAcquireSavepointRequest {
+  string path = 1 [(dev.restate.ext.field) = KEY];
+  string cluster_fqdn = 2;
+}
+message AcquireSavepointRequest {
+  string path = 1 [(dev.restate.ext.field) = KEY];
+  string cluster_fqdn = 2;
+}
+message ReleaseSavepointRequest {
+  string path = 1 [(dev.restate.ext.field) = KEY];
+  string cluster_fqdn = 2;
+}
+message GetSavepointRequest {
+  string path = 1 [(dev.restate.ext.field) = KEY];
+}
+message GetSavepointResponse {
+  SavepointStatus status = 1;
+  repeated string cluster_references = 2;
+}
+
+enum SavepointStatus {
+  NOT_FOUND = 0;
+  CREATING = 1;
+  LIVE = 2;
+  DELETED = 3;
+}
+
+service FlinkCluster {
+  option (dev.restate.ext.service_type) = KEYED;
+
+  rpc GetFlinkCluster(GetFlinkClusterRequest) returns (GetFlinkClusterResponse) {}
+
+  // 1. Call AcquireSavepoint
+  // 2. Interact with the compute system via side effect to bring up a new cluster
+  // 3. Record the HTTP API URL in state
+  rpc CreateFlinkCluster(CreateFlinkClusterRequest) returns (google.protobuf.Empty) {}
+
+  // 1. Side effect call the Flink HTTP API to determine if a checkpoint has been made yet
+  // 2. If it has, call ReleaseSavepoint
+  // 4. If it hasn't, delayed self-call
+  rpc PollSavepoint(GetFlinkClusterRequest) returns (google.protobuf.Empty) {}
+}
+
+message GetFlinkClusterRequest {
+  string fqdn = 1 [(dev.restate.ext.field) = KEY];
+}
+
+message GetFlinkClusterResponse {
+  string created = 1;
+  string rest_url = 2;
+  optional string savepoint_path = 3;
+}
+
+message CreateFlinkClusterRequest {
+  string fqdn = 1 [(dev.restate.ext.field) = KEY];
+  optional string savepoint_path = 2;
+  string jar_path = 3;
+}
+
+service FlinkOperations {
+  option (dev.restate.ext.service_type) = UNKEYED;
+
+  rpc ForkFlinkCluster(ForkFlinkClusterRequest) returns (google.protobuf.Empty) {}
+}
+
+message ForkFlinkClusterRequest {
+  string fqdn = 1;
+  string new_fqdn = 2;
+  string savepoint_path = 3;
+  string jar_path = 4;
+}
