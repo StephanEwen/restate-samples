@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+**/.vscode
+**/.idea
+**/.gradle
+**/src/generated/**
+**/build
+
